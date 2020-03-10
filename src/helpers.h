@@ -154,4 +154,17 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s,
   return {x,y};
 }
 
+vector<double> adjacent_lane (double current_lane) {
+  if (current_lane==0) {
+    adjacent_lane.push_back(1);
+    }
+  else if (current_lane==1) {
+    adjacent_lane.push_back(0);
+    adjacent_lane.push_back(2);
+  }
+  else {
+    adjacent_lane>push_back(1);
+  }
+  return adjacent_lane;
+}
 #endif  // HELPERS_H
