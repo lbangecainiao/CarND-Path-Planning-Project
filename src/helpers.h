@@ -155,16 +155,21 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s,
 }
 
 vector<double> adjacent_lane (double current_lane) {
+  double candidate0;
+  double candidate1;
+  
   if (current_lane==0) {
-    adjacent_lane.push_back(1);
+    candidate0 = 1;
+    candidate1 = 99;  //99 means candidate 1 doesn't exist
     }
   else if (current_lane==1) {
-    adjacent_lane.push_back(0);
-    adjacent_lane.push_back(2);
+    candidate0 = 0;
+    candidate1 = 2;
   }
   else {
-    adjacent_lane>push_back(1);
+    candidate0 = 1;
+    candidate1 = 99;;
   }
-  return adjacent_lane;
+  return {candidate0, candidate1};
 }
 #endif  // HELPERS_H

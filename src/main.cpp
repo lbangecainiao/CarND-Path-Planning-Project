@@ -51,14 +51,17 @@ int main() {
     map_waypoints_dx.push_back(d_x);
     map_waypoints_dy.push_back(d_y);
   }
-
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy]
+  // Initialize the starting lane and velocity
+  int lane = 1;
+  double tar_vel = 0; //km/h
+  h.onMessage([&tar_vel, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
+               &map_waypoints_dx,&map_waypoints_dy, &lane]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
+
     if (length && length > 2 && data[0] == '4' && data[1] == '2') {
 
       auto s = hasData(data);
@@ -106,19 +109,17 @@ int main() {
           double previous_y;
           double ref_yaw;
           double dist = 0.5;
-          double lane = 1;
-          double tar_vel = 80; //km/h
           vector<double> pts_x;
           vector<double> pts_y;
           int prev_size = previous_path_x.size();
           int size = 50;
-          // Derive the ref points and the ref yaw in the anchor points set
+          // Derive the first two ref points and the ref yaw in the anchor points set.
           if(previous_path_x.size()<2) {
             ref_x = car_x;
             ref_y = car_y;
             ref_yaw = deg2rad(car_yaw);
-            previous_x = car_x - cos(car_yaw); //
-            previous_y = car_y - sin(car_yaw); //
+            previous_x = car_x - cos(car_yaw); 
+            previous_y = car_y - sin(car_yaw); 
             pts_x.push_back(previous_x);
             pts_y.push_back(previous_y);
             pts_x.push_back(ref_x);
@@ -134,28 +135,81 @@ int main() {
             pts_x.push_back(ref_x);
             pts_y.push_back(ref_y);
           }
-          //Shift the lane if a slow vehicle is presented in the from
+            
+          //Check the current state of the road
+          double shift_threshold = 50;
+          bool front_occupied = false;
+          double front_speed;
+          double front_s;
+          double ego_s;
+          vector<bool> lane_occupied = {false, false, false};
           for(int i = 0; i < sensor_fusion.size(); ++i) {
-            double front_d = sensor_fusion[i][6];
-            double front_s = sensor_fusion[i][5];
-            double front_vx = sensor_fusion[i][3];
-            double front_vy = sensor_fusion[i][4];
-            double front_s_dot; 
+            double check_d = sensor_fusion[i][6];
+            double check_s = sensor_fusion[i][5];
+            double check_vx = sensor_fusion[i][3];
+            double check_vy = sensor_fusion[i][4];
+            double check_speed = sqrt(check_vx*check_vx + check_vy*check_vy);
+            double predict_check_s = check_s + prev_size*0.02*check_speed;
+            double predict_car_s = car_s + prev_size*0.02*check_speed;
+            double check_s_dot; 
             vector<double> checked_lane;
-            if(front_d < 4+4*lane && front_d > 4*lane && (front_s - car_s) < 30 && front_s > car_s) {  //To check if there is a vehicle ahead
-              checked_lane = adjacent_lane (lane);
+            if(check_d < 4+4*lane && check_d > 4*lane && (predict_check_s - predict_car_s) < 30 && check_s > car_s)            {  //To check if there is a vehicle ahead
+              front_occupied = true;
+              front_speed = check_speed;
+              front_s = predict_check_s;
+              ego_s = predict_car_s;
             }
-            cout<<"Front s"<<front_s<<'\n';
-            cout<<"Front d"<<front_d<<'\n';
-            cout<<"Distance"<<front_s-car_s<<'\n';
-            cout<<"Lane"<<lane<<'\n';
+            if(check_d < 4+4*0 && check_d > 4*0) {
+              if((predict_check_s - predict_car_s) < 30 && check_s > car_s) {
+                lane_occupied[0] = true;
+              }
+              else if((car_s - check_s) < 14 && check_s < car_s) {
+                lane_occupied[0] = true;
+              }
+            }else if(check_d < 4+4*1 && check_d > 4*1) {
+              if((predict_check_s - predict_car_s) < 30 && check_s > car_s) {
+                lane_occupied[1] = true;
+              }
+              else if((car_s - check_s) < 14 && check_s < car_s) {
+                lane_occupied[1] = true;
+              }
+            }else if(check_d < 4+4*2 && check_d > 4*2) {
+              if((predict_check_s - predict_car_s) < 30 && check_s > car_s) {
+                lane_occupied[2] = true;
+              }
+              else if((car_s - check_s) < 14 && check_s < car_s) {
+                lane_occupied[2] = true;
+              }
+            }
+          }
+          
+          //Perform the state transition according to the road condition
+          if(front_occupied == 1) {         //Check if there is a slow vehilce in front
+            vector<double> check_lane = adjacent_lane(lane);
+            bool lane_changed = false;
+            for(int i = 0; i < check_lane.size(); ++i) {
+              if(check_lane[i] != 99) {
+                if(lane_occupied[check_lane[i]] == false) {
+                  lane = check_lane[i];
+                  lane_changed = true;
+                  break;
+                 }
+               }
+             }
+            if(lane_changed==false) {
+              if(tar_vel > front_speed && tar_vel > 50) {
+                tar_vel -= 0.5;
+              }
+            }
+          }
+          else if(tar_vel < 75) {
+               tar_vel +=1.2;
           }
    
-   
-          // Derive the anchor points to define the spline
-          vector<double> pts_spline0 = getXY(car_s+30, 2+4*lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          vector<double> pts_spline1 = getXY(car_s+60, 2+4*lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          vector<double> pts_spline2 = getXY(car_s+90, 2+4*lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          //Deriving the next three anchor points
+          vector<double> pts_spline0 = getXY(car_s+47, 2+4*lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> pts_spline1 = getXY(car_s+80, 2+4*lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          vector<double> pts_spline2 = getXY(car_s+110, 2+4*lane, map_waypoints_s, map_waypoints_x, map_waypoints_y);
           pts_x.push_back(pts_spline0[0]);
           pts_x.push_back(pts_spline1[0]);
           pts_x.push_back(pts_spline2[0]);
@@ -163,7 +217,6 @@ int main() {
           pts_y.push_back(pts_spline1[1]);
           pts_y.push_back(pts_spline2[1]);
           
-          //Perform the coordinate transformation
           double new_x;
           double new_y;
           for(int i = 0; i<pts_x.size(); ++i) {
@@ -179,11 +232,11 @@ int main() {
             next_y_vals.push_back(previous_path_y[i]);
           }
           
-          //Create the spline
+          //Create the spline using the 5 anchor points
           tk::spline s;
           s.set_points(pts_x,pts_y);
           
-          //Add the interpolated points
+          //Generating the points in the path using the spline function
           double horizon_x = 30;
           double horizon_y = s(horizon_x);
           double horizon_dist = sqrt(horizon_x*horizon_x + horizon_y*horizon_y);
@@ -194,7 +247,7 @@ int main() {
           double next_y;
           for(int i=1; i<=size-prev_size; i++) {
             add_on_x += step_x;
-            add_on_y = s(add_on_x);
+            add_on_y = s(add_on_x);    
             next_x = add_on_x*cos(ref_yaw) - add_on_y*sin(ref_yaw);
             next_y = add_on_x*sin(ref_yaw) + add_on_y*cos(ref_yaw);
             next_x += ref_x;
