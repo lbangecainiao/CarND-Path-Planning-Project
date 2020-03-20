@@ -198,12 +198,12 @@ int main() {
              }
             if(lane_changed==false) {
               if(tar_vel > front_speed && tar_vel > 50) {
-                tar_vel -= 0.5;
+                tar_vel -= 0.224;
               }
             }
           }
           else if(tar_vel < 75) {
-               tar_vel +=1.2;
+               tar_vel += 0.224;
           }
    
           //Deriving the next three anchor points
